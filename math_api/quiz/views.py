@@ -42,3 +42,66 @@ class StartQuizView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+    
+from django.utils import timezone
+from .models import Attempt
+from .serializers import SubmitQuizSerializer
+
+class SubmitQuizView(APIView):
+    def post(self, request, quiz_session_id):
+        # Validate session
+        try:
+            session = QuizSession.objects.get(id=quiz_session_id)
+        except QuizSession.DoesNotExist:
+            return Response(
+                {"error": "Quiz session not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Prevent double submission
+        if session.completed_at:
+            return Response(
+                {"error": "Quiz already submitted."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = SubmitQuizSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        answers = serializer.validated_data["answers"]
+
+        score = 0
+        total_questions = len(answers)
+
+        for answer in answers:
+            try:
+                question = Question.objects.get(id=answer["question_id"])
+            except Question.DoesNotExist:
+                continue
+
+            is_correct = question.correct_answer == answer["submitted_answer"]
+
+            if is_correct:
+                score += 1
+
+            Attempt.objects.create(
+                quiz_session=session,
+                question=question,
+                submitted_answer=answer["submitted_answer"],
+                is_correct=is_correct,
+            )
+
+        session.score = score
+        session.completed_at = timezone.now()
+        session.save()
+
+        percentage = (score / total_questions) * 100 if total_questions > 0 else 0
+
+        return Response(
+            {
+                "score": score,
+                "total_questions": total_questions,
+                "percentage": percentage,
+            },
+            status=status.HTTP_200_OK,
+        )

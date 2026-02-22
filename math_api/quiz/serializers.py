@@ -18,3 +18,11 @@ class QuestionPublicSerializer(serializers.ModelSerializer):
         model = Question
         # Do NOT expose correct_answer
         fields = ["id", "topic", "difficulty", "question_text", "answer_choices"]
+
+class AnswerSubmissionSerializer(serializers.Serializer):
+    question_id = serializers.IntegerField()
+    submitted_answer = serializers.CharField(max_length=255)
+
+
+class SubmitQuizSerializer(serializers.Serializer):
+    answers = AnswerSubmissionSerializer(many=True)
