@@ -105,3 +105,53 @@ class SubmitQuizView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+from django.db.models import Count, Sum
+from .models import Attempt
+
+
+class StudentProgressView(APIView):
+    def get(self, request, student_identifier):
+        sessions = QuizSession.objects.filter(
+            student_identifier=student_identifier,
+            completed_at__isnull=False
+        )
+
+        if not sessions.exists():
+            return Response(
+                {"student_identifier": student_identifier, "topics": []},
+                status=status.HTTP_200_OK
+            )
+
+        attempts = Attempt.objects.filter(quiz_session__in=sessions)
+
+        topic_stats = (
+            attempts
+            .values("question__topic__name")
+            .annotate(
+                total_attempts=Count("id"),
+                correct_attempts=Sum("is_correct")
+            )
+        )
+
+        topics_data = []
+
+        for stat in topic_stats:
+            total = stat["total_attempts"]
+            correct = stat["correct_attempts"] or 0
+            accuracy = (correct / total) * 100 if total > 0 else 0
+
+            topics_data.append({
+                "topic": stat["question__topic__name"],
+                "total_attempts": total,
+                "accuracy_percentage": round(accuracy, 2)
+            })
+
+        return Response(
+            {
+                "student_identifier": student_identifier,
+                "topics": topics_data
+            },
+            status=status.HTTP_200_OK
+        )
